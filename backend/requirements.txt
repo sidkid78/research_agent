@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+psycopg2-binary  # Or your preferred DB driver
+alembic
+python-dotenv
+
+# Agent/Pipeline specific
+requests
+beautifulsoup4
+duckduckgo-search
+google-genai>=1.19.0  # Google GenAI SDK (Latest unified SDK)
+# openai # Uncomment if using OpenAI
+# newspaper3k # Uncomment if using newspaper3k 

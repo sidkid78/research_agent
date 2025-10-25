@@ -1,0 +1,16 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend for the research agent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.12.15",
+    "arxiv>=2.2.0",
+    "bio>=1.8.0",
+    "fastapi>=0.116.1",
+    "google-genai>=1.31.0",
+    "requests>=2.32.5",
+    "sqlalchemy>=2.0.43",
+    "uvicorn>=0.35.0",
+]
