@@ -4,6 +4,7 @@ An advanced AI-powered research agent that conducts comprehensive academic resea
 
 ## Features
 
+### Core Capabilities
 - 🔬 **Multi-Source Research**: Searches across arXiv, PubMed, and web sources
 - 🤖 **AI-Powered Analysis**: Uses Google's Gemini 2.5 Flash for intelligent synthesis
 - 📊 **Academic Quality Metrics**: Tracks peer-reviewed sources and authority
@@ -12,6 +13,12 @@ An advanced AI-powered research agent that conducts comprehensive academic resea
 - 📚 **Citation Management**: Properly formatted references with metadata
 - ⚡ **Real-time Progress**: Live updates during research process
 - 🔒 **Persistent Storage**: SQLite database for job history
+
+### Research Modes
+- 📋 **Single Research**: Submit one topic, get comprehensive results
+- 📦 **Batch Research**: Process multiple topics simultaneously
+- 🔴 **Live Research**: Interactive sessions with real-time AI responses
+- 📜 **Research History**: Browse and review all past research jobs
 
 ## Quick Start with Docker (Recommended)
 
@@ -48,6 +55,13 @@ docker-compose up -d
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
+
+### Available Pages
+
+- **Main Research**: http://localhost:3000 - Submit single research requests
+- **Batch Research**: http://localhost:3000/batch-research - Submit multiple topics at once
+- **Live Research**: http://localhost:3000/live-research - Real-time interactive research sessions
+- **Research History**: http://localhost:3000/research/history - View past research jobs
 
 ## Development Setup (Without Docker)
 
@@ -197,6 +211,37 @@ See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for detailed Docker documentati
 - **React Hook Form** - Form management
 - **Sonner** - Toast notifications
 
+## Usage Guide
+
+### Single Research (Main Page)
+1. Navigate to http://localhost:3000
+2. Enter your research topic
+3. Select output format (bullets or full report)
+4. Choose preferred sources (arXiv, PubMed, Web)
+5. Add email if using PubMed
+6. Click "Start Research" and wait for results
+
+### Batch Research
+1. Navigate to http://localhost:3000/batch-research
+2. Enter multiple topics (one per line or comma-separated)
+3. Configure output format and sources
+4. Submit batch - all topics will be processed in parallel
+5. View individual results or download all at once
+
+### Live Research
+1. Navigate to http://localhost:3000/live-research
+2. Start a new research session
+3. Ask questions in real-time
+4. Get immediate AI-powered responses
+5. Conversation history maintained throughout session
+
+### Research History
+1. Navigate to http://localhost:3000/research/history
+2. Browse all past research jobs
+3. Filter by status, date, or topic
+4. Re-open completed research
+5. Delete or archive old jobs
+
 ## Features in Detail
 
 ### Smart Query Generation
@@ -278,12 +323,23 @@ For issues and questions:
 
 ## Roadmap
 
-- [ ] Support for more academic databases
+### Implemented ✅
+- [x] Multi-source research (arXiv, PubMed, Web)
+- [x] Batch research for multiple topics
+- [x] Live research sessions
+- [x] Research history tracking
+- [x] Smart source selection
+
+### Planned 🚀
+- [ ] Support for more academic databases (IEEE, Scopus, Web of Science)
 - [ ] Export to multiple formats (PDF, LaTeX, BibTeX)
-- [ ] Collaborative research sessions
-- [ ] Research history and favorites
-- [ ] Custom source prioritization
+- [ ] Collaborative research sessions (multi-user)
+- [ ] Research favorites and bookmarking
+- [ ] Custom source prioritization and weights
 - [ ] Citation graph visualization
+- [ ] Advanced analytics dashboard
+- [ ] API rate limiting and quotas
+- [ ] User authentication and profiles
 
 ---
 

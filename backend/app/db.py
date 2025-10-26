@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# SQLALCHEMY_DATABASE_URL = "postgresql://user:password@postgresserver/db"
+# SQLALCHEMY_DATABASE_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/research_agent"
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./research_agent.db")
 
 engine = create_engine(
@@ -18,19 +18,19 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
-    logger.info("Getting database session") # TODO: Remove this
+    logger.info("Getting database session") 
     db = SessionLocal()
     try:
-        logger.info("Database session yielded") # TODO: Remove this
+        logger.info("Database session yielded") 
         yield db
     finally:
         db.close()
-        logger.info("Database session closed") # TODO: Remove this
+        logger.info("Database session closed") 
 
 # Function to create database tables
 # In a production app with migrations (Alembic), you might not call this directly from the app.
 # Alembic would handle table creation and updates.
 def create_db_and_tables():
-    logger.info("Creating database tables") # TODO: Remove this
+    logger.info("Creating database tables") 
     Base.metadata.create_all(bind=engine) 
-    logger.info("Database tables created") # TODO: Remove this
+    logger.info("Database tables created") 

@@ -2,8 +2,11 @@
 import uuid
 import logging
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Optional
+from datetime import datetime, timezone
+from pydantic import BaseModel
 import json
 
 from . import models, schemas, crud # crud will be created later
@@ -296,7 +299,366 @@ async def get_academic_sources_preview(topic: str, email: str = None):
             "estimated_sources": 0
         }
 
-# Health check endpoint
+# -------------------------------------------------------------
+# Live Research (Minimal In-Memory Implementation for Frontend)
+# -------------------------------------------------------------
+
+class LiveResearchStartRequestModel(BaseModel):
+    topic: str
+    modalities: Optional[List[str]] = None
+    system_instructions: Optional[List[str]] = None
+
+class LiveResearchSessionModel(BaseModel):
+    session_id: str
+    topic: str
+    status: str
+    started_at: str
+    modalities: List[str]
+    participants: Optional[int] = 1
+
+class LiveResearchSummaryModel(BaseModel):
+    session_id: str
+    topic: str
+    duration_minutes: int
+    total_interactions: int
+    key_findings: List[dict]
+    questions_explored: List[dict]
+    research_report: Optional[str] = None
+
+live_sessions: Dict[str, dict] = {}
+
+@app.post("/live-research/start", response_model=LiveResearchSessionModel)
+async def start_live_research_session(payload: LiveResearchStartRequestModel):
+    import uuid as _uuid
+    session_id = str(_uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    live_sessions[session_id] = {
+        "topic": payload.topic,
+        "status": "active",
+        "started_at": now,
+        "modalities": payload.modalities or ["text"],
+        "interactions": 0,
+        "key_findings": [],
+        "questions": []
+    }
+    return LiveResearchSessionModel(
+        session_id=session_id,
+        topic=payload.topic,
+        status="active",
+        started_at=now.isoformat(),
+        modalities=payload.modalities or ["text"],
+        participants=1,
+    )
+
+@app.get("/live-research/{session_id}/status", response_model=LiveResearchSummaryModel)
+async def get_live_research_status(session_id: str):
+    sess = live_sessions.get(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+    elapsed = max(1, int((datetime.now(timezone.utc) - sess["started_at"]).total_seconds() // 60))
+    return LiveResearchSummaryModel(
+        session_id=session_id,
+        topic=sess["topic"],
+        duration_minutes=elapsed,
+        total_interactions=sess.get("interactions", 0),
+        key_findings=sess.get("key_findings", []),
+        questions_explored=sess.get("questions", []),
+        research_report=None,
+    )
+
+@app.post("/live-research/{session_id}/end", response_model=LiveResearchSummaryModel)
+async def end_live_research_session(session_id: str):
+    sess = live_sessions.get(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+    sess["status"] = "ended"
+    elapsed = max(1, int((datetime.now(timezone.utc) - sess["started_at"]).total_seconds() // 60))
+    # Provide a lightweight summary
+    summary = LiveResearchSummaryModel(
+        session_id=session_id,
+        topic=sess["topic"],
+        duration_minutes=elapsed,
+        total_interactions=sess.get("interactions", 0),
+        key_findings=sess.get("key_findings", []),
+        questions_explored=sess.get("questions", []),
+        research_report=f"Live research session for '{sess['topic']}' ended after {elapsed} minute(s).",
+    )
+    return summary
+
+@app.websocket("/live-research/{session_id}/ws")
+async def live_research_ws(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await websocket.send_json({
+            "sender": "assistant",
+            "content": f"Connected to live research session {session_id}. Ask a question to begin.",
+            "timestamp": now_iso,
+        })
+        while True:
+            raw = await websocket.receive_text()
+            reply_ts = datetime.now(timezone.utc).isoformat()
+            try:
+                data = json.loads(raw)
+            except Exception:
+                data = {"type": "message", "content": raw}
+
+            # Update minimal session metrics
+            sess = live_sessions.get(session_id)
+            if sess is not None:
+                sess["interactions"] = int(sess.get("interactions", 0)) + 1
+
+            msg_type = str(data.get("message_type") or data.get("type") or "message").lower()
+            if msg_type == "audio":
+                response_text = "Received your audio message. Transcription is not enabled in this demo stub."
+            else:
+                user_content = str(data.get("content", "")).strip()
+                if user_content:
+                    response_text = (
+                        "Working on that. This demo backend is a placeholder; "
+                        "the full agent would search PubMed/arXiv/web and summarize findings.\n\n"
+                        f"Echo: {user_content}"
+                    )
+                else:
+                    response_text = "Please provide a question or message to continue."
+
+            await websocket.send_json({
+                "sender": "assistant",
+                "content": response_text,
+                "timestamp": reply_ts,
+            })
+    except WebSocketDisconnect:
+        pass
+
+# ----------------------------------------
+# Batch Research (Minimal In-Memory Stubs)
+# ----------------------------------------
+
+class BatchResearchRequestModel(BaseModel):
+    topics: List[str]
+    output_format: str
+    email: Optional[str] = None
+    research_type: Optional[str] = None
+
+batch_jobs: Dict[str, dict] = {}
+
+@app.post("/batch-research")
+async def submit_batch_research(payload: BatchResearchRequestModel):
+    import uuid as _uuid
+    batch_id = str(_uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    batch_jobs[batch_id] = {
+        "created_at": now,
+        "status": "in_progress",
+        "topics": payload.topics,
+        "output_format": payload.output_format,
+        "completed": [],
+        "failed": [],
+        "results": {}
+    }
+    # Minimal immediate progress: mark as completed with placeholder results
+    for t in payload.topics:
+        batch_jobs[batch_id]["completed"].append(t)
+        batch_jobs[batch_id]["results"][t] = {
+            "topic": t,
+            "content": f"Auto-generated placeholder result for '{t}'.",
+            "references": [],
+            "output_format": payload.output_format,
+            "generated_at": now.isoformat(),
+            "word_count": 25,
+            "confidence_score": 0.5,
+        }
+    batch_jobs[batch_id]["status"] = "completed"
+    return {"batch_id": batch_id, "status": "queued"}
+
+@app.get("/batch-research/{batch_id}/status")
+async def get_batch_status(batch_id: str):
+    job = batch_jobs.get(batch_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    total = max(1, len(job["topics"]))
+    progress = len(job["completed"]) / total
+    return {
+        "batch_id": batch_id,
+        "status": job["status"],
+        "progress": progress,
+        "completed_topics": job["completed"],
+        "failed_topics": job["failed"],
+    }
+
+@app.get("/batch-research/{batch_id}/results")
+async def get_batch_results(batch_id: str):
+    job = batch_jobs.get(batch_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    total = len(job["topics"])
+    return {
+        "batch_id": batch_id,
+        "total_topics": total,
+        "completed_topics": len(job["completed"]),
+        "failed_topics": len(job["failed"]),
+        "results": job["results"],
+        "overall_confidence": 0.5,
+        "processing_time_seconds": 1,
+    }
+
+# Export Endpoints
+@app.get("/research/{job_id}/export")
+async def export_research_result(
+    job_id: str,
+    format: str = "txt",
+    db: Session = Depends(get_db)
+):
+    """
+    Export research result in various formats.
+    Supported formats: txt, md, pdf, docx
+    """
+    logger.info(f"Export request for job {job_id} in format {format}")
+    
+    # Get the research result
+    db_job = crud.get_research_job(db, job_id=job_id)
+    
+    if db_job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if db_job.status != models.JobStatusEnum.completed:
+        raise HTTPException(status_code=400, detail="Job not completed yet")
+    
+    if db_job.result_payload is None:
+        raise HTTPException(status_code=404, detail="Job result not found")
+    
+    result = schemas.ResearchResult(**db_job.result_payload)
+    
+    # Format the content based on requested format
+    if format == "txt" or format == "md":
+        # Plain text or markdown format
+        content_lines = [
+            f"# {result.topic}",
+            "",
+            f"Generated on: {result.generated_at}",
+            f"Word Count: {result.word_count}",
+            "",
+            "## Research Summary",
+            "",
+            result.content,
+            "",
+            "## References",
+            ""
+        ]
+        
+        for i, ref in enumerate(result.references, 1):
+            content_lines.append(f"{i}. **{ref.title}**")
+            content_lines.append(f"   URL: {ref.url}")
+            if ref.snippet:
+                content_lines.append(f"   {ref.snippet}")
+            content_lines.append("")
+        
+        content_str = "\n".join(content_lines)
+        
+        from fastapi.responses import Response
+        return Response(
+            content=content_str,
+            media_type="text/plain" if format == "txt" else "text/markdown",
+            headers={
+                "Content-Disposition": f"attachment; filename=research_{job_id}.{format}"
+            }
+        )
+    
+    elif format == "pdf":
+        # Generate a simple PDF using reportlab
+        from io import BytesIO
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.utils import simpleSplit
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+        y = height - 72
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(72, y, f"Research: {result.topic}")
+        y -= 24
+        c.setFont("Helvetica", 10)
+        c.drawString(72, y, f"Generated: {result.generated_at}  •  Word Count: {result.word_count}")
+        y -= 24
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(72, y, "Summary:")
+        y -= 16
+        c.setFont("Helvetica", 11)
+        summary_lines = simpleSplit(result.content or "", "Helvetica", 11, width - 144)
+        for line in summary_lines:
+            if y < 72:
+                c.showPage(); y = height - 72; c.setFont("Helvetica", 11)
+            c.drawString(72, y, line); y -= 14
+        y -= 12
+        c.setFont("Helvetica-Bold", 12)
+        if y < 88:
+            c.showPage(); y = height - 72
+        c.drawString(72, y, "References:")
+        y -= 16
+        c.setFont("Helvetica", 10)
+        for idx, ref in enumerate(result.references, 1):
+            ref_line = f"{idx}. {ref.title}"
+            lines = simpleSplit(ref_line, "Helvetica", 10, width - 144)
+            for ln in lines:
+                if y < 72:
+                    c.showPage(); y = height - 72; c.setFont("Helvetica", 10)
+                c.drawString(72, y, ln); y -= 12
+            if ref.url:
+                url_line = f"   {ref.url}"
+                lines = simpleSplit(url_line, "Helvetica", 10, width - 144)
+                for ln in lines:
+                    if y < 72:
+                        c.showPage(); y = height - 72; c.setFont("Helvetica", 10)
+                    c.drawString(72, y, ln); y -= 12
+            if ref.snippet:
+                snip_line = f"   {ref.snippet}"
+                lines = simpleSplit(snip_line, "Helvetica", 10, width - 144)
+                for ln in lines:
+                    if y < 72:
+                        c.showPage(); y = height - 72; c.setFont("Helvetica", 10)
+                    c.drawString(72, y, ln); y -= 12
+            y -= 6
+        c.showPage(); c.save()
+        pdf_bytes = buffer.getvalue(); buffer.close()
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=research_{job_id}.pdf"}
+        )
+    elif format == "docx":
+        # Generate a simple DOCX using python-docx
+        from io import BytesIO
+        from docx import Document
+        from docx.shared import Pt
+        buffer = BytesIO()
+        doc = Document()
+        doc.add_heading(f"Research: {result.topic}", level=1)
+        p = doc.add_paragraph()
+        run = p.add_run(f"Generated: {result.generated_at}  •  Word Count: {result.word_count}")
+        run.font.size = Pt(10)
+        doc.add_heading("Summary", level=2)
+        doc.add_paragraph(result.content or "")
+        doc.add_heading("References", level=2)
+        for ref in result.references:
+            doc.add_paragraph(ref.title, style="List Number")
+            if ref.url:
+                doc.add_paragraph(ref.url)
+            if ref.snippet:
+                doc.add_paragraph(ref.snippet)
+        doc.save(buffer)
+        docx_bytes = buffer.getvalue(); buffer.close()
+        from fastapi.responses import Response
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=research_{job_id}.docx"}
+        )
+    
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported format. Use: txt, md, pdf, or docx")
+
+# Export Endpoints
 @app.get("/health", status_code=200)
 async def health_check():
     logger.info("Health check endpoint called")
