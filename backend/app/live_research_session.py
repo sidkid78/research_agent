@@ -8,6 +8,7 @@ from google import genai
 from google.genai import types
 import json
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class LiveResearchSession:
@@ -17,10 +18,13 @@ class LiveResearchSession:
     """
     
     def __init__(self, client: genai.Client):
+        """Initialize the live research session"""
+        logger.info(f"Initializing live research session with client: {client}")
         self.client = client
         self.active_session = None
-        self.session_context = {}
-        
+        self.session_context = {
+        }   
+        logger.info(f"Live research session context initialized: {self.session_context}")
     async def start_live_research_session(
         self, 
         research_topic: str,
@@ -28,6 +32,7 @@ class LiveResearchSession:
         system_instructions: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Start an interactive research session"""
+        logger.info(f"Starting live research session for topic: {research_topic} with modalities: {modalities}")
         try:
             # Configure session
             config = {

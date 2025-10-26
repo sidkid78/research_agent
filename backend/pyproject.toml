@@ -16,3 +16,9 @@ dependencies = [
     "sqlalchemy>=2.0.43",
     "uvicorn>=0.35.0",
 ]
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.25.3",
+    "httpx>=0.28.1",
+]

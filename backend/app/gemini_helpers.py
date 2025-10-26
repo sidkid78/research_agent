@@ -9,6 +9,7 @@ import arxiv
 from Bio import Entrez
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 
 from .schemas import Reference
 
@@ -384,104 +385,151 @@ diabetes medication new research"""
         except Exception as e:
             logger.error(f"Failed to parse PubMed XML: {e}")
             return []
-    
-    @staticmethod
-    async def search_with_google_grounding(
-        client: genai.Client,
-        model_name: str,
-        query: str,
-        context: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Use Google Grounding with Search for authoritative web information"""
+
+    async def search_with_google_grounding(self, query: str) -> Dict[str, Any]:
+        """Search using Google Grounding with proper metadata extraction"""
         try:
-            logger.info(f"Using Google Grounding for: {query}")
-            
-            # Create comprehensive grounding query
-            grounding_prompt = f"""
-            Research the topic: {query}
-            
-            {f"Additional context: {context}" if context else ""}
-            
-            Please provide comprehensive information including:
-            - Recent developments and breakthroughs
-            - Current market trends and statistics
-            - Expert opinions and analysis
-            - Industry reports and government data
-            - Regulatory or policy changes
-            - Future outlook and implications
-            
-            Use Google Search to find the most authoritative and recent sources.
-            Prioritize information from:
-            - Government agencies and official statistics
-            - Academic institutions and research centers
-            - Industry reports from reputable organizations
-            - News from established media outlets
-            - Professional associations and standards bodies
-            """
-            
-            # Use Gemini with Google Search grounding
-            response = await client.aio.models.generate_content(
-                model=model_name,
-                contents=grounding_prompt,
+            response = await self.client.aio.models.generate_content(
+                model=self.models['grounding'],
+                contents=query,
                 config=types.GenerateContentConfig(
                     temperature=0.3,
-                    top_p=0.8,
-                    max_output_tokens=4096,
-                    response_mime_type="text/plain",
-                    tools=[types.Tool(google_search=types.GoogleSearch())]
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    tools=[{"google_search": {}}] # Enable grounding 
                 )
             )
-            
+
             result = {
-                "content": response.text if response.text else "",
-                "sources": [],
-                "grounding_metadata": None,
-                "search_quality": "high"
+                'text': response.text if response.text else '',
+                'sources': [],
+                'queries': []
             }
-            
-            # Extract grounding metadata if available
-            if hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'grounding_metadata'):
-                    result["grounding_metadata"] = candidate.grounding_metadata
-                    
-                    # NEW: Extract from grounding_chunks (the actual search results)
-                    if hasattr(candidate.grounding_metadata, 'grounding_chunks'):
-                        for chunk in candidate.grounding_metadata.grounding_chunks:
-                            if hasattr(chunk, 'web'):
-                                web = chunk.web
-                                source_info = {
-                                    "title": getattr(web, 'title', 'Unknown'),
-                                    "url": getattr(web, 'uri', ''),
-                                    "snippet": response.text[:300] if response.text else ''  # Use response text as snippet
-                                }
-                                result["sources"].append(source_info)
-                                logger.info(f"Found web source: {source_info['title']} - {source_info['url']}")
-                    
-                    # Fallback: Try search_entry_point for older API versions
-                    elif hasattr(candidate.grounding_metadata, 'search_entry_point'):
-                        search_entry = candidate.grounding_metadata.search_entry_point
-                        if hasattr(search_entry, 'rendered_content'):
-                            for content in search_entry.rendered_content:
-                                if hasattr(content, 'source'):
-                                    source_info = {
-                                        "title": getattr(content.source, 'title', 'Unknown'),
-                                        "url": getattr(content.source, 'url', ''),
-                                        "snippet": getattr(content, 'text', '')[:200]
-                                    }
-                                    result["sources"].append(source_info)
-            
-            logger.info(f"Google Grounding found {len(result['sources'])} sources")
+
+            # Extract grounding metadata
+            if (response.candidates and
+                len(response.candidates) > 0 and 
+                response.candidates[0].grounding_metadata):
+
+                metadata = response.candidates[0].grounding_metadats 
+
+                # Get search queries used 
+                if hasattr(metadata, 'web_search_queries') and metadata.web_search_queries:
+                    result['queries'] = list(metadata.web_search_queries)
+
+                # Get grounding chunks (sources)
+                if hasattr(metadata, 'grounding_chunks') and metadata.grounding_chunks:
+                    for chunk in metadata.grounding_chunks:
+                        if hasattr(chunk, 'web') and chunk.web:
+                            result['sources'].append({
+                                'title': chunk.web.title if hasattr(chunk.web, 'title') else 'Unknown',
+                                'url': chunk.web.uri if hasattr(chunk.web, 'uri') else ''
+                            })
+
             return result
+
+        except APIError as e:
+            logger.error(f"Grounding search failed: {e.code} - {e.message}")
+            return {'text': '', 'sources': [], 'queries': []}
+
+    
+    
+    # @staticmethod
+    # async def search_with_google_grounding(
+    #     client: genai.Client,
+    #     model_name: str,
+    #     query: str,
+    #     context: Optional[str] = None
+    # ) -> Dict[str, Any]:
+    #     """Use Google Grounding with Search for authoritative web information"""
+    #     try:
+    #         logger.info(f"Using Google Grounding for: {query}")
             
-        except Exception as e:
-            logger.error(f"Google Grounding search failed: {e}")
-            return {
-                "content": f"Google Grounding search failed: {str(e)}",
-                "sources": [],
-                "grounding_metadata": None,
-                "search_quality": "failed"
-            }
+    #         # Create comprehensive grounding query
+    #         grounding_prompt = f"""
+    #         Research the topic: {query}
+            
+    #         {f"Additional context: {context}" if context else ""}
+            
+    #         Please provide comprehensive information including:
+    #         - Recent developments and breakthroughs
+    #         - Current market trends and statistics
+    #         - Expert opinions and analysis
+    #         - Industry reports and government data
+    #         - Regulatory or policy changes
+    #         - Future outlook and implications
+            
+    #         Use Google Search to find the most authoritative and recent sources.
+    #         Prioritize information from:
+    #         - Government agencies and official statistics
+    #         - Academic institutions and research centers
+    #         - Industry reports from reputable organizations
+    #         - News from established media outlets
+    #         - Professional associations and standards bodies
+    #         """
+            
+    #         # Use Gemini with Google Search grounding
+    #         response = await client.aio.models.generate_content(
+    #             model=model_name,
+    #             contents=grounding_prompt,
+    #             config=types.GenerateContentConfig(
+    #                 temperature=0.3,
+    #                 top_p=0.8,
+    #                 max_output_tokens=6144,
+    #                 response_mime_type="text/plain",
+    #                 tools=[types.Tool(google_search=types.GoogleSearch())]
+    #             )
+    #         )
+            
+    #         result = {
+    #             "content": response.text if response.text else "",
+    #             "sources": [],
+    #             "grounding_metadata": None,
+    #             "search_quality": "high"
+    #         }
+            
+    #         # Extract grounding metadata if available
+    #         if hasattr(response, 'candidates') and response.candidates:
+    #             candidate = response.candidates[0]
+    #             if hasattr(candidate, 'grounding_metadata'):
+    #                 result["grounding_metadata"] = candidate.grounding_metadata
+                    
+    #                 # NEW: Extract from grounding_chunks (the actual search results)
+    #                 if hasattr(candidate.grounding_metadata, 'grounding_chunks'):
+    #                     for chunk in candidate.grounding_metadata.grounding_chunks:
+    #                         if hasattr(chunk, 'web'):
+    #                             web = chunk.web
+    #                             source_info = {
+    #                                 "title": getattr(web, 'title', 'Unknown'),
+    #                                 "url": getattr(web, 'uri', ''),
+    #                                 "snippet": response.text[:300] if response.text else ''  # Use response text as snippet
+    #                             }
+    #                             result["sources"].append(source_info)
+    #                             logger.info(f"Found web source: {source_info['title']} - {source_info['url']}")
+                    
+    #                 # Fallback: Try search_entry_point for older API versions
+    #                 elif hasattr(candidate.grounding_metadata, 'search_entry_point'):
+    #                     search_entry = candidate.grounding_metadata.search_entry_point
+    #                     if hasattr(search_entry, 'rendered_content'):
+    #                         for content in search_entry.rendered_content:
+    #                             if hasattr(content, 'source'):
+    #                                 source_info = {
+    #                                     "title": getattr(content.source, 'title', 'Unknown'),
+    #                                     "url": getattr(content.source, 'url', ''),
+    #                                     "snippet": getattr(content, 'text', '')[:200]
+    #                                 }
+    #                                 result["sources"].append(source_info)
+            
+    #         logger.info(f"Google Grounding found {len(result['sources'])} sources")
+    #         return result
+            
+    #     except Exception as e:
+    #         logger.error(f"Google Grounding search failed: {e}")
+    #         return {
+    #             "content": f"Google Grounding search failed: {str(e)}",
+    #             "sources": [],
+    #             "grounding_metadata": None,
+    #             "search_quality": "failed"
+    #         }
     
     @staticmethod
     async def comprehensive_academic_search(
@@ -712,6 +760,10 @@ diabetes medication new research"""
                 response_mime_type="text/plain",
             )
         )
+        if not response.text:
+            logger.warning("No text in response")
+            if response.candidates and response.candidates[0].content.parts:
+                pass 
         
         return response.text if response.text else "Synthesis generation failed"
     

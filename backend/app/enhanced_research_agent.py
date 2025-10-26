@@ -27,6 +27,7 @@ import xml.etree.ElementTree as ET
 
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 from google.genai.types import Type
 from Bio import Entrez
 import arxiv
@@ -105,6 +106,28 @@ class EnhancedResearchAgent:
             top_k=40,
             max_output_tokens=8192,
             response_mime_type="text/plain",
+            thinking_config=types.ThinkingConfig(
+                thinking_budget=0
+            ),
+            system_instruction=[
+                "You are a professional academic research analyst.",
+                "Prioritize peer-reviewed sources and authoritative academic content.",
+                "Always cite sources accurately with DOIs when available.",
+                "Focus on recent developments and established research findings.",
+                "Note any limitations or conflicts in the research literature."
+            ]
+        )
+
+        # Create seperate config for premium model (thinking required)
+        self.premium_generation_config = types.GenerateContentConfig(
+            temperature=0.3,
+            top_p=0.8,
+            top_k=40,
+            max_output_tokens=8192,
+            response_mime_type="text/plain",
+            thinking_config=types.ThinkingConfig(
+                thinking_budget=128
+            ),
             system_instruction=[
                 "You are a professional academic research analyst.",
                 "Prioritize peer-reviewed sources and authoritative academic content.",
@@ -185,6 +208,35 @@ class EnhancedResearchAgent:
             'algorithm', 'model', 'data', 'analysis', 'research', 'study',
             'treatment', 'therapy', 'diagnosis', 'clinical', 'trial'
         }
+
+    def _select_model(self, task_complexity: str = "medium") -> tuple[str, types.GenerateContentConfig]:
+        """Select appropriate model and config based on task complexity"""
+        if task_complexity == "high":
+            return self.models["premium"], self.premium_generation_config
+        else:
+            return self.models["fast"], self.generation_config
+
+    async def _call_gemini_safely(self, model: str, contents: str, config: types.GenerateContentConfig) -> str:
+        """Wrapper for safe Gemini API calls with error handling"""
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config 
+            )
+
+            if not response.text:
+                logger.warning("Empty response from Gemini API")
+                return ""
+
+            return response.text
+
+        except APIError as e:
+            logger.error(f"Gemini API Error {e.code}: {e.message}")
+            raise 
+        except Exception as e:
+            logger.error(f"Unexpected error calling Gemini: {e}")
+            raise
         
     async def conduct_research(self, request: ResearchRequest) -> ResearchResult:
         """
@@ -951,13 +1003,12 @@ class EnhancedResearchAgent:
         - Prioritize recent findings and developments
         """
         
-        response = await self.client.aio.models.generate_content(
+        output_text = await self._call_gemini_safely(
             model=self.models["fast"],
             contents=output_prompt,
-            config=self.generation_config
+            config=self.generation_config 
         )
-        
-        return response.text
+        return output_text
     
     def _remove_duplicate_papers(self, papers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

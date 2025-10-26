@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Test ArXiv integration"""
 
+from typing import Any
+
+
 import asyncio
 from app.gemini_helpers import GeminiHelpers
 
@@ -17,7 +20,7 @@ async def test_arxiv_search():
         
         print(f"✅ Found {len(papers)} ArXiv papers")
         
-        for i, paper in enumerate(papers, 1):
+        for i, paper in enumerate[Any](papers, 1):
             print(f"\n📄 Paper {i}:")
             print(f"   Title: {paper['title'][:80]}...")
             print(f"   Authors: {paper.get('authors', 'N/A')}")
